@@ -23,7 +23,7 @@
             <option value="5">مايو</option>
             <option value="6">يونيو</option>
         </select>
-        <button class="btn btn-warning" onclick="loadDashboard()">تحديث</button>
+        <button class="btn btn-warning" onclick="loadDashboard(); loadDetails();">تحديث</button>
     </div>
 </div>
 
@@ -53,6 +53,14 @@
             </div>
         </div>
     </div>
+    <div class="col-md-3">
+        <div class="card bg-dark text-warning border-warning">
+            <div class="card-body">
+                <h5>عدد السجلات</h5>
+                <h2 id="totalLogs">0</h2>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- رسم بياني -->
@@ -62,7 +70,7 @@
     </div>
 </div>
 
-<!-- جدول التفاصيل -->
+<!-- جدول التفاصيل الإجمالي -->
 <div class="card bg-dark border-warning mb-4">
     <div class="card-body">
         <table class="table table-dark table-hover">
@@ -77,6 +85,33 @@
             </thead>
             <tbody id="tableBody"></tbody>
         </table>
+    </div>
+</div>
+
+<!-- جدول تفاصيل المكونات -->
+<div class="card bg-dark border-warning mb-4">
+    <div class="card-header bg-dark text-warning">
+        <h5 class="mb-0">📊 تفاصيل المستهدفات والمنفذ لكل مكون</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+            <table class="table table-dark table-hover table-bordered">
+                <thead class="text-warning">
+                    <tr>
+                        <th>المكون</th>
+                        <th>الهندسة</th>
+                        <th>المستهدف</th>
+                        <th>المنفذ</th>
+                        <th>النسبة</th>
+                    </tr>
+                </thead>
+                <tbody id="detailsTableBody">
+                    <tr>
+                        <td colspan="5" class="text-center">جاري التحميل...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
@@ -124,15 +159,13 @@
             </div>
             <div class="col-md-12 mb-3">
               <label class="form-label">ملاحظات</label>
-              <textarea name="notes" class="form-control" rows="3"></textarea>
+              <textarea name="notes" class="form-control" rows="3" placeholder="مثال: تم اليوم عمل صيانة على محول النادى قدره 200 ك.ف.أ"></textarea>
             </div>
             <div class="col-md-12 mb-3">
-              <label class="form-label">الأفراد المشاركون (اختر واحد أو أكثر)</label>
-              <select name="personnel_ids" multiple class="form-select">
-                {% for person in personnel %}
-                <option value="{{ person.id }}">{{ person.name }} - {{ person.role }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label">الأفراد المشاركون</label>
+              <input type="text" name="personnel_ids" id="personnelInput" class="form-control" 
+                     placeholder="مثال: مهندس أحمد - رئيس فرقة محمد - فني على - عامل حسن - سائق محمود">
+              <small class="text-muted">اكتب أسماء الأفراد المشاركين في العمل</small>
             </div>
             <div class="col-md-12 mb-3">
               <label class="form-label">رفع صور أو فيديو</label>
@@ -220,6 +253,32 @@
       </div>
     </div>
   </div>
+</div>
+
+<!-- زر المساعد الذكي -->
+<button id="aiAssistantBtn" class="ai-assistant-btn" onclick="toggleAssistant()">
+    🤖 المساعد الذكي
+</button>
+
+<!-- نافذة المساعد الذكي -->
+<div id="aiAssistantPanel" class="ai-assistant-panel" style="display: none;">
+    <div class="ai-header">
+        <span>🤖 المساعد الذكي للصيانة</span>
+        <button type="button" class="btn-close btn-close-white" onclick="toggleAssistant()"></button>
+    </div>
+    <div id="aiMessages" class="ai-messages">
+        <div class="ai-message bot">
+            مرحباً! أنا المساعد الذكي. يمكنني مساعدتك في:
+            - التنبؤ بالأعطال المحتملة
+            - تحليل بيانات الصيانة
+            - اقتراح خطط صيانة وقائية
+            - الإجابة عن استفساراتك
+        </div>
+    </div>
+    <div class="ai-input-area">
+        <input type="text" id="aiInput" class="form-control" placeholder="اكتب سؤالك هنا...">
+        <button class="btn btn-warning mt-2 w-100" onclick="sendAIMessage()">إرسال</button>
+    </div>
 </div>
 {% endblock %}
 

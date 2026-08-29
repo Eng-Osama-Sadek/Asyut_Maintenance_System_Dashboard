@@ -21,8 +21,9 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
-            return redirect(url_for('main.dashboard'))
-        flash('بيانات الدخول غير صحيحة')
+            next_page = request.args.get('next')
+            return redirect(next_page or url_for('main.dashboard'))
+        flash('بيانات الدخول غير صحيحة', 'error')
     return render_template('login.html')
 
 @main_bp.route('/logout')
@@ -35,7 +36,7 @@ def logout():
 @main_bp.route('/')
 @login_required
 def dashboard():
-    years = [2026, 2027]  # يمكنك إضافة سنوات أخرى مستقبلاً
+    years = [2026, 2027]
     engineerings = Engineering.query.all()
     component_types = ComponentType.query.all()
     personnel = Personnel.query.all()
@@ -54,26 +55,22 @@ def dashboard():
 @main_bp.route('/api/dashboard/<int:year>/<int:month>')
 @login_required
 def dashboard_data(year, month):
-    """إرجاع بيانات لوحة التحكم لشهر محدد"""
     data = []
     engineerings = Engineering.query.all()
     
     for eng in engineerings:
-        # حساب المستهدف للشهر المحدد
         total_target = db.session.query(db.func.sum(MonthlyTarget.target_value)).filter_by(
             engineering_id=eng.id,
             year=year,
             month=month
         ).scalar() or 0
         
-        # حساب المنفذ للشهر المحدد
         total_executed = db.session.query(db.func.sum(MaintenanceLog.executed_value)).filter(
             MaintenanceLog.engineering_id == eng.id,
             db.extract('year', MaintenanceLog.date) == year,
             db.extract('month', MaintenanceLog.date) == month
         ).scalar() or 0
         
-        # حساب النسبة المئوية
         percent = (total_executed / total_target * 100) if total_target > 0 else 0
         
         data.append({
@@ -86,17 +83,59 @@ def dashboard_data(year, month):
     
     return jsonify(data)
 
+# ================== API تفاصيل المكونات ==================
+@main_bp.route('/api/dashboard_details/<int:year>/<int:month>')
+@login_required
+def dashboard_details(year, month):
+    data = []
+    engineerings = Engineering.query.all()
+    components = ComponentType.query.all()
+    
+    for comp in components:
+        comp_data = {
+            'component_id': comp.id,
+            'component_name': comp.name,
+            'engineerings': []
+        }
+        
+        for eng in engineerings:
+            target = db.session.query(db.func.sum(MonthlyTarget.target_value)).filter_by(
+                engineering_id=eng.id,
+                component_type_id=comp.id,
+                year=year,
+                month=month
+            ).scalar() or 0
+            
+            executed = db.session.query(db.func.sum(MaintenanceLog.executed_value)).filter(
+                MaintenanceLog.engineering_id == eng.id,
+                MaintenanceLog.component_type_id == comp.id,
+                db.extract('year', MaintenanceLog.date) == year,
+                db.extract('month', MaintenanceLog.date) == month
+            ).scalar() or 0
+            
+            percent = (executed / target * 100) if target > 0 else 0
+            
+            comp_data['engineerings'].append({
+                'engineering_id': eng.id,
+                'engineering_name': eng.name,
+                'target': round(target, 2),
+                'executed': round(executed, 2),
+                'percent': round(percent, 2)
+            })
+        
+        data.append(comp_data)
+    
+    return jsonify(data)
+
 # ================== إضافة سجل صيانة ==================
 @main_bp.route('/api/log', methods=['POST'])
 @login_required
 def add_log():
-    """إضافة سجل صيانة جديد"""
     try:
         data = request.form
         engineering_id = int(data['engineering_id'])
         component_type_id = int(data['component_type_id'])
         
-        # معالجة التاريخ
         date_str = data.get('date')
         if date_str:
             date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -107,7 +146,6 @@ def add_log():
         notes = data.get('notes', '')
         personnel_ids = data.get('personnel_ids', '')
         
-        # رفع الملفات (صور وفيديو)
         files = request.files.getlist('files')
         media_paths = []
         
@@ -115,14 +153,12 @@ def add_log():
             for file in files:
                 if file and allowed_file(file.filename):
                     filename = secure_filename(file.filename)
-                    # إضافة timestamp لتجنب تكرار الأسماء
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     unique_filename = f"{timestamp}_{filename}"
                     file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename)
                     file.save(file_path)
                     media_paths.append(file_path)
         
-        # إنشاء السجل
         log = MaintenanceLog(
             engineering_id=engineering_id,
             component_type_id=component_type_id,
@@ -145,7 +181,6 @@ def add_log():
 @main_bp.route('/api/target', methods=['POST'])
 @login_required
 def add_target():
-    """إضافة أو تحديث مستهدف شهري"""
     try:
         data = request.form
         engineering_id = int(data['engineering_id'])
@@ -154,7 +189,6 @@ def add_target():
         month = int(data['month'])
         target_value = float(data['target_value'])
         
-        # التحقق من عدم التكرار
         existing = MonthlyTarget.query.filter_by(
             engineering_id=engineering_id,
             component_type_id=component_type_id,
@@ -163,11 +197,9 @@ def add_target():
         ).first()
         
         if existing:
-            # تحديث المستهدف الموجود
             existing.target_value = target_value
             message = 'تم تحديث المستهدف بنجاح'
         else:
-            # إنشاء مستهدف جديد
             target = MonthlyTarget(
                 engineering_id=engineering_id,
                 component_type_id=component_type_id,
@@ -185,144 +217,67 @@ def add_target():
     except Exception as e:
         return jsonify({'success': False, 'message': f'حدث خطأ: {str(e)}'}), 400
 
-# ================== إضافة هندسة جديدة ==================
-@main_bp.route('/api/engineering', methods=['POST'])
-@login_required
-def add_engineering():
-    """إضافة هندسة جديدة"""
-    try:
-        data = request.json
-        name = data.get('name')
-        sector_id = data.get('sector_id', 1)  # افتراضياً قطاع أسيوط جنوب
-        
-        if not name:
-            return jsonify({'success': False, 'message': 'اسم الهندسة مطلوب'}), 400
-        
-        # التحقق من عدم التكرار
-        existing = Engineering.query.filter_by(name=name).first()
-        if existing:
-            return jsonify({'success': False, 'message': 'الهندسة موجودة بالفعل'}), 400
-        
-        eng = Engineering(name=name, sector_id=sector_id)
-        db.session.add(eng)
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'تم إضافة الهندسة بنجاح', 'id': eng.id})
-    
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'حدث خطأ: {str(e)}'}), 400
-
-# ================== إضافة مكون جديد ==================
-@main_bp.route('/api/component', methods=['POST'])
-@login_required
-def add_component():
-    """إضافة مكون شبكة جديد"""
-    try:
-        data = request.json
-        name = data.get('name')
-        unit = data.get('unit', 'عدد')
-        
-        if not name:
-            return jsonify({'success': False, 'message': 'اسم المكون مطلوب'}), 400
-        
-        # التحقق من عدم التكرار
-        existing = ComponentType.query.filter_by(name=name).first()
-        if existing:
-            return jsonify({'success': False, 'message': 'المكون موجود بالفعل'}), 400
-        
-        comp = ComponentType(name=name, unit=unit)
-        db.session.add(comp)
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'تم إضافة المكون بنجاح', 'id': comp.id})
-    
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'حدث خطأ: {str(e)}'}), 400
-
-# ================== إضافة فرد ==================
-@main_bp.route('/api/personnel', methods=['POST'])
-@login_required
-def add_personnel():
-    """إضافة فرد جديد (مهندس، فني، عامل...)"""
-    try:
-        data = request.json
-        name = data.get('name')
-        role = data.get('role')
-        engineering_id = data.get('engineering_id')
-        
-        if not name or not role:
-            return jsonify({'success': False, 'message': 'الاسم والدور مطلوبان'}), 400
-        
-        person = Personnel(name=name, role=role, engineering_id=engineering_id)
-        db.session.add(person)
-        db.session.commit()
-        
-        return jsonify({'success': True, 'message': 'تم إضافة الفرد بنجاح', 'id': person.id})
-    
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'حدث خطأ: {str(e)}'}), 400
-
 # ================== تقرير PDF ==================
 @main_bp.route('/report/<int:engineering_id>/<int:year>/<int:month>')
 @login_required
 def report(engineering_id, year, month):
-    """توليد تقرير PDF لهندسة محددة في شهر محدد"""
     eng = Engineering.query.get_or_404(engineering_id)
     
-    # جلب المستهدفات للشهر المحدد
     targets = MonthlyTarget.query.filter_by(
         engineering_id=engineering_id,
         year=year,
         month=month
     ).all()
     
-    # جلب السجلات للشهر المحدد
     logs = MaintenanceLog.query.filter(
         MaintenanceLog.engineering_id == engineering_id,
         db.extract('year', MaintenanceLog.date) == year,
         db.extract('month', MaintenanceLog.date) == month
     ).all()
     
-    # حساب ملخص لكل مكون
     summary = []
     for target in targets:
+        comp = ComponentType.query.get(target.component_type_id)
+        comp_name = comp.name if comp else 'غير معروف'
+        
         executed = sum(log.executed_value for log in logs if log.component_type_id == target.component_type_id)
         percent = (executed / target.target_value * 100) if target.target_value > 0 else 0
         summary.append({
-            'component': target.component_type.name,
+            'component': comp_name,
             'target': target.target_value,
             'executed': executed,
             'percent': round(percent, 2)
         })
     
-    # اليوم الأخير من الشهر
+    logs_data = []
+    for log in logs:
+        personnel_names = log.personnel_ids if log.personnel_ids else ''
+        
+        comp = ComponentType.query.get(log.component_type_id)
+        comp_name = comp.name if comp else 'غير معروف'
+        
+        logs_data.append({
+            'date': log.date.strftime('%Y-%m-%d'),
+            'component': comp_name,
+            'value': log.executed_value,
+            'notes': log.notes or '',
+            'personnel': personnel_names
+        })
+    
     last_day = calendar.monthrange(year, month)[1]
     
-    # تحويل أسماء الأفراد من IDs إلى أسماء
-    for log in logs:
-        if log.personnel_ids:
-            ids = log.personnel_ids.split(',')
-            names = []
-            for pid in ids:
-                person = Personnel.query.get(int(pid))
-                if person:
-                    names.append(f"{person.name} ({person.role})")
-            log.personnel_names = '، '.join(names)
-        else:
-            log.personnel_names = ''
+    context = {
+        'eng_name': eng.name,
+        'sector_name': eng.sector.name if eng.sector else '',
+        'company_name': eng.sector.company.name if eng.sector and eng.sector.company else '',
+        'year': year,
+        'month': month,
+        'last_day': last_day,
+        'summary': summary,
+        'logs': logs_data
+    }
     
-    # توليد HTML ثم PDF
-    html = render_template(
-        'report_template.html',
-        eng=eng,
-        summary=summary,
-        logs=logs,
-        year=year,
-        month=month,
-        last_day=last_day
-    )
-    
-    pdf = generate_pdf(html)
+    pdf = generate_pdf(context=context)
     
     return send_file(
         pdf,
@@ -334,101 +289,156 @@ def report(engineering_id, year, month):
 @main_bp.route('/api/assistant', methods=['POST'])
 @login_required
 def assistant():
-    """المساعد الذكي المدعوم بالذكاء الاصطناعي"""
-    user_message = request.json.get('message')
-    if not user_message:
-        return jsonify({'error': 'No message provided'}), 400
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        user_message = data.get('message', '')
+        if not user_message:
+            return jsonify({'error': 'No message provided'}), 400
+        
+        response = get_openai_response(user_message)
+        return jsonify({'response': response})
     
-    response = get_openai_response(user_message)
-    return jsonify({'response': response})
+    except Exception as e:
+        return jsonify({'response': f'حدث خطأ: {str(e)}'}), 500
 
 # ================== استيراد Excel ==================
 @main_bp.route('/import_excel', methods=['POST'])
 @login_required
 def import_excel():
-    """استيراد بيانات من ملف Excel"""
     if 'file' not in request.files:
-        flash('لا يوجد ملف مرفوع')
+        flash('لا يوجد ملف مرفوع', 'error')
         return redirect(url_for('main.dashboard'))
     
     file = request.files['file']
     if file.filename == '':
-        flash('لم يتم اختيار ملف')
+        flash('لم يتم اختيار ملف', 'error')
         return redirect(url_for('main.dashboard'))
     
     if not (file.filename.endswith('.xlsx') or file.filename.endswith('.xls')):
-        flash('يجب أن يكون الملف بصيغة Excel')
+        flash('يجب أن يكون الملف بصيغة Excel', 'error')
         return redirect(url_for('main.dashboard'))
     
-    # حفظ الملف مؤقتاً
     filename = secure_filename(file.filename)
     filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
     file.save(filepath)
     
     try:
-        # قراءة الملف
         df = pd.read_excel(filepath, sheet_name=0, header=None)
         
-        # هنا يمكنك تخصيص منطق الاستخراج حسب بنية ملفك
-        # سنقوم بمعالجة بسيطة: نبحث عن أسماء الهندسات في الصف الأول
-        # والصفوف التي تحتوي على "مستهدف" في العمود الأول
-        
-        # استخراج أسماء الهندسات من الصف الأول (من العمود الثاني فصاعداً)
-        engineering_names = []
-        for col in range(1, len(df.columns)):
-            val = df.iloc[0, col]
-            if pd.notna(val) and 'الاجمالى' not in str(val):
-                eng_name = str(val).strip()
-                if eng_name and eng_name not in engineering_names:
-                    engineering_names.append(eng_name)
-        
-        # إنشاء الهندسات إذا لم تكن موجودة
         sector = Sector.query.first()
         if not sector:
             sector = Sector(name='قطاع أسيوط جنوب', company_id=1)
             db.session.add(sector)
             db.session.commit()
         
-        for eng_name in engineering_names:
+        engineering_map = {}
+        current_eng = None
+        
+        for col in range(2, len(df.columns)):
+            val = df.iloc[6, col]
+            if pd.notna(val):
+                val_str = str(val).strip()
+                if val_str and 'الاجمالى' not in val_str and val_str != 'nan':
+                    current_eng = val_str
+                elif 'الاجمالى' in val_str and current_eng:
+                    current_eng = None
+            if current_eng:
+                engineering_map[col] = current_eng
+        
+        eng_objects = {}
+        for eng_name in set(engineering_map.values()):
             existing = Engineering.query.filter_by(name=eng_name).first()
             if not existing:
                 eng = Engineering(name=eng_name, sector_id=sector.id)
                 db.session.add(eng)
-        
+                db.session.flush()
+                eng_objects[eng_name] = eng
+            else:
+                eng_objects[eng_name] = existing
         db.session.commit()
         
-        # هنا يمكنك إضافة منطق استخراج المستهدفات الشهرية
-        # هذا يتطلب تخصيصاً دقيقاً حسب بنية الملف
+        month_map = {}
         
-        flash(f'تم استيراد {len(engineering_names)} هندسة بنجاح. (تخصيص إضافي مطلوب لاستخراج المستهدفات)')
+        for col in range(2, len(df.columns)):
+            val = df.iloc[7, col]
+            if pd.notna(val):
+                try:
+                    if isinstance(val, datetime):
+                        year = val.year
+                        month = val.month
+                    elif isinstance(val, pd.Timestamp):
+                        year = val.year
+                        month = val.month
+                    else:
+                        continue
+                    
+                    month_map[col] = (year, month)
+                except:
+                    pass
+        
+        targets_imported = 0
+        
+        for row_idx in range(8, len(df)):
+            val_col1 = df.iloc[row_idx, 1] if df.shape[1] > 1 else None
+            
+            if pd.notna(val_col1) and str(val_col1).strip() == 'مستهدف':
+                comp_name = str(df.iloc[row_idx, 0]).strip() if pd.notna(df.iloc[row_idx, 0]) else ''
+                
+                if not comp_name or comp_name == 'nan':
+                    continue
+                
+                comp = ComponentType.query.filter_by(name=comp_name).first()
+                if not comp:
+                    comp = ComponentType(name=comp_name, unit='عدد')
+                    db.session.add(comp)
+                    db.session.flush()
+                
+                for col, eng_name in engineering_map.items():
+                    eng = eng_objects.get(eng_name)
+                    if not eng:
+                        continue
+                    
+                    if col in month_map:
+                        year, month = month_map[col]
+                        val = df.iloc[row_idx, col]
+                        
+                        if pd.notna(val):
+                            try:
+                                target_value = float(val)
+                                
+                                existing = MonthlyTarget.query.filter_by(
+                                    engineering_id=eng.id,
+                                    component_type_id=comp.id,
+                                    year=year,
+                                    month=month
+                                ).first()
+                                
+                                if existing:
+                                    existing.target_value = target_value
+                                else:
+                                    new_target = MonthlyTarget(
+                                        engineering_id=eng.id,
+                                        component_type_id=comp.id,
+                                        year=year,
+                                        month=month,
+                                        target_value=target_value
+                                    )
+                                    db.session.add(new_target)
+                                targets_imported += 1
+                            except:
+                                pass
+        
+        db.session.commit()
+        flash(f'✅ تم استيراد {targets_imported} مستهدف بنجاح!', 'success')
         
     except Exception as e:
-        flash(f'خطأ في قراءة الملف: {str(e)}')
+        db.session.rollback()
+        flash(f'❌ خطأ في قراءة الملف: {str(e)}', 'error')
     finally:
-        # حذف الملف المؤقت
         if os.path.exists(filepath):
             os.remove(filepath)
     
     return redirect(url_for('main.dashboard'))
-
-# ================== API للحصول على قوائم البيانات ==================
-@main_bp.route('/api/engineerings')
-@login_required
-def get_engineerings():
-    """إرجاع قائمة الهندسات"""
-    engineerings = Engineering.query.all()
-    return jsonify([{'id': eng.id, 'name': eng.name} for eng in engineerings])
-
-@main_bp.route('/api/components')
-@login_required
-def get_components():
-    """إرجاع قائمة المكونات"""
-    components = ComponentType.query.all()
-    return jsonify([{'id': comp.id, 'name': comp.name, 'unit': comp.unit} for comp in components])
-
-@main_bp.route('/api/personnel')
-@login_required
-def get_personnel():
-    """إرجاع قائمة الأفراد"""
-    personnel = Personnel.query.all()
-    return jsonify([{'id': p.id, 'name': p.name, 'role': p.role} for p in personnel])

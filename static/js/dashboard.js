@@ -9,7 +9,6 @@ async function loadDashboard() {
     const labels = data.map(item => item.engineering);
     const executed = data.map(item => item.executed);
     const targets = data.map(item => item.target);
-    const percents = data.map(item => item.percent);
 
     const totalTarget = targets.reduce((a,b) => a + b, 0);
     const totalExecuted = executed.reduce((a,b) => a + b, 0);
@@ -53,9 +52,53 @@ async function loadDashboard() {
     });
 }
 
+async function loadDetails() {
+    const year = document.getElementById('yearSelect').value;
+    const month = document.getElementById('monthSelect').value;
+    
+    try {
+        const response = await fetch(`/api/dashboard_details/${year}/${month}`);
+        const data = await response.json();
+        
+        const tbody = document.getElementById('detailsTableBody');
+        tbody.innerHTML = '';
+        
+        data.forEach(comp => {
+            comp.engineerings.forEach((eng, index) => {
+                const barColor = eng.percent >= 100 ? 'bg-success' : 
+                                eng.percent >= 50 ? 'bg-warning' : 
+                                eng.percent > 0 ? 'bg-danger' : 'bg-secondary';
+                
+                tbody.innerHTML += `
+                    <tr>
+                        ${index === 0 ? `<td rowspan="${comp.engineerings.length}" class="text-warning fw-bold align-middle">${comp.component_name}</td>` : ''}
+                        <td>${eng.engineering_name}</td>
+                        <td>${eng.target}</td>
+                        <td>${eng.executed}</td>
+                        <td>
+                            <div class="progress" style="height: 20px; min-width: 80px;">
+                                <div class="progress-bar ${barColor}" 
+                                     role="progressbar" 
+                                     style="width: ${Math.min(eng.percent, 100)}%;">
+                                    ${eng.percent}%
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+        });
+    } catch (error) {
+        document.getElementById('detailsTableBody').innerHTML = `
+            <tr><td colspan="5" class="text-center text-danger">خطأ في تحميل البيانات</td></tr>
+        `;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
-    // ربط النماذج
+    loadDetails();
+    
     document.getElementById('logForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -70,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('حدث خطأ');
         }
     });
+    
     document.getElementById('targetForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(e.target);
@@ -84,4 +128,65 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('حدث خطأ');
         }
     });
+});
+
+// ================== المساعد الذكي ==================
+function toggleAssistant() {
+    const panel = document.getElementById('aiAssistantPanel');
+    if (panel.style.display === 'none') {
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+async function sendAIMessage() {
+    const input = document.getElementById('aiInput');
+    const message = input.value.trim();
+    if (!message) return;
+    
+    const messagesDiv = document.getElementById('aiMessages');
+    
+    messagesDiv.innerHTML += `<div class="ai-message user">${message}</div>`;
+    input.value = '';
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    const loadingId = 'loadingMsg_' + Date.now();
+    messagesDiv.innerHTML += `<div class="ai-message bot" id="${loadingId}">جاري التفكير...</div>`;
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    
+    try {
+        const response = await fetch('/api/assistant', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ message: message })
+        });
+        
+        const data = await response.json();
+        
+        const loadingMsg = document.getElementById(loadingId);
+        if (loadingMsg) loadingMsg.remove();
+        
+        messagesDiv.innerHTML += `<div class="ai-message bot">${data.response}</div>`;
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    } catch (error) {
+        const loadingMsg = document.getElementById(loadingId);
+        if (loadingMsg) loadingMsg.remove();
+        messagesDiv.innerHTML += `<div class="ai-message bot">حدث خطأ: ${error.message}</div>`;
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const aiInput = document.getElementById('aiInput');
+    if (aiInput) {
+        aiInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendAIMessage();
+            }
+        });
+    }
 });
