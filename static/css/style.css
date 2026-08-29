@@ -1,0 +1,25 @@
+body {
+    background-color: #0d1b2a; /* خلفية زرقاء داكنة */
+    color: #ffc107; /* نص أصفر فاتح */
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.card {
+    background-color: #132a3f;
+    border: 1px solid #ffc107;
+}
+
+.btn-warning {
+    background-color: #ffc107;
+    border: none;
+    color: #0d1b2a;
+    font-weight: bold;
+}
+
+.table {
+    color: #ffc107;
+}
+
+.navbar {
+    background-color: #0d1b2a !important;
+}

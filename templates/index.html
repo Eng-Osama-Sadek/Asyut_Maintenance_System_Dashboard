@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+{% block title %}لوحة التحكم{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="text-warning">نسبة تنفيذ الصيانة الشهرية</h2>
+    <div>
+        <select id="yearSelect" class="form-select d-inline w-auto me-2">
+            {% for y in years %}
+            <option value="{{ y }}">{{ y }}</option>
+            {% endfor %}
+        </select>
+        <select id="monthSelect" class="form-select d-inline w-auto me-2">
+            <option value="7">يوليو</option>
+            <option value="8">أغسطس</option>
+            <option value="9">سبتمبر</option>
+            <option value="10">أكتوبر</option>
+            <option value="11">نوفمبر</option>
+            <option value="12">ديسمبر</option>
+            <option value="1">يناير</option>
+            <option value="2">فبراير</option>
+            <option value="3">مارس</option>
+            <option value="4">أبريل</option>
+            <option value="5">مايو</option>
+            <option value="6">يونيو</option>
+        </select>
+        <button class="btn btn-warning" onclick="loadDashboard()">تحديث</button>
+    </div>
+</div>
+
+<!-- بطاقات إحصائية -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-dark text-warning border-warning">
+            <div class="card-body">
+                <h5>إجمالي المستهدف</h5>
+                <h2 id="totalTarget">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark text-warning border-warning">
+            <div class="card-body">
+                <h5>إجمالي المنفذ</h5>
+                <h2 id="totalExecuted">0</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-dark text-warning border-warning">
+            <div class="card-body">
+                <h5>نسبة الإنجاز العامة</h5>
+                <h2 id="overallPercent">0%</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- رسم بياني -->
+<div class="card bg-dark border-warning mb-4">
+    <div class="card-body">
+        <canvas id="maintenanceChart"></canvas>
+    </div>
+</div>
+
+<!-- جدول التفاصيل -->
+<div class="card bg-dark border-warning mb-4">
+    <div class="card-body">
+        <table class="table table-dark table-hover">
+            <thead class="text-warning">
+                <tr>
+                    <th>الهندسة</th>
+                    <th>المستهدف</th>
+                    <th>المنفذ</th>
+                    <th>النسبة</th>
+                    <th>تقرير PDF</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- أزرار إضافية -->
+<div class="mb-4">
+    <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#addLogModal">➕ إضافة سجل صيانة</button>
+    <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#addTargetModal">🎯 إضافة مستهدف شهري</button>
+    <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#importModal">📥 استيراد Excel</button>
+</div>
+
+<!-- Modal لإضافة سجل -->
+<div class="modal fade" id="addLogModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-warning">
+      <div class="modal-header border-warning">
+        <h5 class="modal-title">إضافة سجل صيانة</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="logForm" enctype="multipart/form-data">
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">الهندسة</label>
+              <select name="engineering_id" class="form-select" required>
+                {% for eng in engineerings %}
+                <option value="{{ eng.id }}">{{ eng.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">المكون</label>
+              <select name="component_type_id" class="form-select" required>
+                {% for comp in component_types %}
+                <option value="{{ comp.id }}">{{ comp.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">التاريخ</label>
+              <input type="date" name="date" class="form-control" value="{{ today }}">
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">الكمية المنفذة</label>
+              <input type="number" step="any" name="executed_value" class="form-control" required>
+            </div>
+            <div class="col-md-12 mb-3">
+              <label class="form-label">ملاحظات</label>
+              <textarea name="notes" class="form-control" rows="3"></textarea>
+            </div>
+            <div class="col-md-12 mb-3">
+              <label class="form-label">الأفراد المشاركون (اختر واحد أو أكثر)</label>
+              <select name="personnel_ids" multiple class="form-select">
+                {% for person in personnel %}
+                <option value="{{ person.id }}">{{ person.name }} - {{ person.role }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-12 mb-3">
+              <label class="form-label">رفع صور أو فيديو</label>
+              <input type="file" name="files" multiple class="form-control" accept="image/*,video/*">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-warning">حفظ</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal لإضافة مستهدف -->
+<div class="modal fade" id="addTargetModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-warning">
+      <div class="modal-header border-warning">
+        <h5 class="modal-title">إضافة مستهدف شهري</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="targetForm">
+          <div class="mb-3">
+            <label class="form-label">الهندسة</label>
+            <select name="engineering_id" class="form-select" required>
+              {% for eng in engineerings %}
+              <option value="{{ eng.id }}">{{ eng.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">المكون</label>
+            <select name="component_type_id" class="form-select" required>
+              {% for comp in component_types %}
+              <option value="{{ comp.id }}">{{ comp.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">السنة</label>
+            <input type="number" name="year" class="form-control" value="2026" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">الشهر</label>
+            <select name="month" class="form-select" required>
+              <option value="7">يوليو</option>
+              <option value="8">أغسطس</option>
+              <option value="9">سبتمبر</option>
+              <option value="10">أكتوبر</option>
+              <option value="11">نوفمبر</option>
+              <option value="12">ديسمبر</option>
+              <option value="1">يناير</option>
+              <option value="2">فبراير</option>
+              <option value="3">مارس</option>
+              <option value="4">أبريل</option>
+              <option value="5">مايو</option>
+              <option value="6">يونيو</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">القيمة المستهدفة</label>
+            <input type="number" step="any" name="target_value" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-warning">حفظ</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal للاستيراد -->
+<div class="modal fade" id="importModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-warning">
+      <div class="modal-header border-warning">
+        <h5 class="modal-title">استيراد ملف Excel</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form method="POST" action="{{ url_for('main.import_excel') }}" enctype="multipart/form-data">
+          <input type="file" name="file" accept=".xlsx,.xls" class="form-control mb-3" required>
+          <button type="submit" class="btn btn-warning">رفع واستيراد</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

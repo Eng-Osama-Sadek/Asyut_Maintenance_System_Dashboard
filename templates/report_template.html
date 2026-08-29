@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Arial', sans-serif; direction: rtl; }
+        .header { text-align: center; background-color: #0d1b2a; color: #ffc107; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #333; padding: 8px; text-align: center; }
+        th { background-color: #0d1b2a; color: #ffc107; }
+        .signatures { display: flex; justify-content: space-between; margin-top: 50px; }
+        .signature-box { width: 45%; text-align: center; }
+        .signature-line { border-top: 1px solid #000; margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>تقرير أعمال الصيانة الشهرية</h1>
+        <h2>هندسة {{ eng.name }} - قطاع {{ eng.sector.name }} - شركة {{ eng.sector.company.name }}</h2>
+        <h3>الفترة من {{ year }}-{{ month }}-01 إلى {{ year }}-{{ month }}-{{ last_day }}</h3>
+    </div>
+
+    <h3>ملخص التنفيذ</h3>
+    <table>
+        <tr><th>المكون</th><th>المستهدف</th><th>المنفذ</th><th>النسبة</th></tr>
+        {% for item in summary %}
+        <tr><td>{{ item.component }}</td><td>{{ item.target }}</td><td>{{ item.executed }}</td><td>{{ item.percent }}%</td></tr>
+        {% endfor %}
+    </table>
+
+    <h3>تفاصيل الأعمال اليومية</h3>
+    <table>
+        <tr><th>التاريخ</th><th>المكون</th><th>الكمية</th><th>الملاحظات</th><th>الأفراد</th></tr>
+        {% for log in logs %}
+        <tr>
+            <td>{{ log.date }}</td>
+            <td>{{ log.component_type.name }}</td>
+            <td>{{ log.executed_value }}</td>
+            <td>{{ log.notes }}</td>
+            <td>{{ log.personnel_ids }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <div class="signatures">
+        <div class="signature-box">
+            <p>مدير إدارة الصيانة</p>
+            <div class="signature-line"></div>
+        </div>
+        <div class="signature-box">
+            <p>مدير عام الصيانة</p>
+            <div class="signature-line"></div>
+        </div>
+    </div>
+</body>
+</html>
