@@ -187,11 +187,11 @@ def generate_pdf(context=None):
     return buffer
 
 
-def get_openai_response(message):
-    """استدعاء Gemini API باستخدام requests"""
+def get_openai_response(message, context_data=None):
+    """استدعاء Gemini API مع بيانات التطبيق"""
     api_key = current_app.config.get('GEMINI_API_KEY')
     if not api_key or api_key == '':
-        return "عذراً، لم يتم إعداد مفتاح Gemini API. يرجى إضافته في ملف .env"
+        return "عذراً، لم يتم إعداد مفتاح Gemini API"
     
     try:
         url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
@@ -199,12 +199,38 @@ def get_openai_response(message):
             "Content-Type": "application/json",
             "x-goog-api-key": api_key
         }
+        
+        context_text = ""
+        if context_data:
+            context_text = f"""
+            أنت متصل بقاعدة بيانات حقيقية لتطبيق إدارة الصيانة. أجب بناءً على هذه البيانات الفعلية:
+            
+            إجمالي الإحصائيات:
+            - عدد الهندسات: {context_data.get('total_engineerings', 0)}
+            - عدد المكونات: {context_data.get('total_components', 0)}
+            - إجمالي المستهدف: {context_data.get('total_target', 0)}
+            - إجمالي المنفذ: {context_data.get('total_executed', 0)}
+            - نسبة الإنجاز الكلية: {context_data.get('percent', 0)}%
+            
+            تفاصيل الهندسات:
+            {context_data.get('engineering_details', '')}
+            
+            تفاصيل المكونات:
+            {context_data.get('component_details', '')}
+            """
+        
         payload = {
             "contents": [
                 {
                     "parts": [
                         {
-                            "text": f"أنت مساعد ذكي لتطبيق إدارة الصيانة الكهربائية. سؤال المستخدم: {message}"
+                            "text": f"""
+                            {context_text}
+                            
+                            سؤال المستخدم: {message}
+                            
+                            أجب باللغة العربية بناءً على البيانات الفعلية أعلاه.
+                            """
                         }
                     ]
                 }
@@ -224,12 +250,8 @@ def get_openai_response(message):
         
         elif response.status_code == 400:
             return "خطأ: مفتاح API غير صالح"
-        elif response.status_code == 403:
-            return "خطأ: المفتاح غير مصرح له"
         else:
             return f"خطأ: {response.status_code}"
     
-    except requests.exceptions.ConnectionError:
-        return "خطأ في الاتصال بخوادم Google"
     except Exception as e:
         return f"حدث خطأ: {str(e)}"

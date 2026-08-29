@@ -291,19 +291,72 @@ def report(engineering_id, year, month):
 def assistant():
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'error': 'No data provided'}), 400
-        
         user_message = data.get('message', '')
-        if not user_message:
-            return jsonify({'error': 'No message provided'}), 400
         
-        response = get_openai_response(user_message)
+        # جلب بيانات حقيقية من قاعدة البيانات
+        today = date.today()
+        year = today.year
+        month = today.month
+        
+        total_target = db.session.query(db.func.sum(MonthlyTarget.target_value)).filter_by(
+            year=year, month=month
+        ).scalar() or 0
+        
+        total_executed = db.session.query(db.func.sum(MaintenanceLog.executed_value)).filter(
+            db.extract('year', MaintenanceLog.date) == year,
+            db.extract('month', MaintenanceLog.date) == month
+        ).scalar() or 0
+        
+        percent = (total_executed / total_target * 100) if total_target > 0 else 0
+        
+        engineerings = Engineering.query.all()
+        components = ComponentType.query.all()
+        
+        details_lines = []
+        for eng in engineerings:
+            eng_target = db.session.query(db.func.sum(MonthlyTarget.target_value)).filter_by(
+                engineering_id=eng.id, year=year, month=month
+            ).scalar() or 0
+            
+            eng_executed = db.session.query(db.func.sum(MaintenanceLog.executed_value)).filter(
+                MaintenanceLog.engineering_id == eng.id,
+                db.extract('year', MaintenanceLog.date) == year,
+                db.extract('month', MaintenanceLog.date) == month
+            ).scalar() or 0
+            
+            eng_percent = (eng_executed / eng_target * 100) if eng_target > 0 else 0
+            details_lines.append(f"{eng.name}: المستهدف {eng_target}, المنفذ {eng_executed}, النسبة {round(eng_percent, 2)}%")
+        
+        component_lines = []
+        for comp in components:
+            comp_target = db.session.query(db.func.sum(MonthlyTarget.target_value)).filter_by(
+                component_type_id=comp.id, year=year, month=month
+            ).scalar() or 0
+            
+            comp_executed = db.session.query(db.func.sum(MaintenanceLog.executed_value)).filter(
+                MaintenanceLog.component_type_id == comp.id,
+                db.extract('year', MaintenanceLog.date) == year,
+                db.extract('month', MaintenanceLog.date) == month
+            ).scalar() or 0
+            
+            comp_percent = (comp_executed / comp_target * 100) if comp_target > 0 else 0
+            component_lines.append(f"{comp.name}: المستهدف {comp_target}, المنفذ {comp_executed}, النسبة {round(comp_percent, 2)}%")
+        
+        context_data = {
+            'total_engineerings': len(engineerings),
+            'total_components': len(components),
+            'total_target': round(total_target, 2),
+            'total_executed': round(total_executed, 2),
+            'percent': round(percent, 2),
+            'engineering_details': '\n'.join(details_lines),
+            'component_details': '\n'.join(component_lines)
+        }
+        
+        response = get_openai_response(user_message, context_data)
         return jsonify({'response': response})
     
     except Exception as e:
         return jsonify({'response': f'حدث خطأ: {str(e)}'}), 500
-
 # ================== استيراد Excel ==================
 @main_bp.route('/import_excel', methods=['POST'])
 @login_required
