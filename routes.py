@@ -160,32 +160,49 @@ def restore_database():
 def dashboard_data(year, month):
     data = []
     engineerings = Engineering.query.all()
+    components = ComponentType.query.all()
     
     for eng in engineerings:
-        total_target = db.session.query(db.func.sum(MonthlyTarget.target_value)).filter_by(
-            engineering_id=eng.id,
-            year=year,
-            month=month
-        ).scalar() or 0
+        component_percents = []
+        total_target_all = 0
+        total_executed_all = 0
         
-        total_executed = db.session.query(db.func.sum(MaintenanceLog.executed_value)).filter(
-            MaintenanceLog.engineering_id == eng.id,
-            db.extract('year', MaintenanceLog.date) == year,
-            db.extract('month', MaintenanceLog.date) == month
-        ).scalar() or 0
+        for comp in components:
+            target = db.session.query(db.func.sum(MonthlyTarget.target_value)).filter_by(
+                engineering_id=eng.id,
+                component_type_id=comp.id,
+                year=year,
+                month=month
+            ).scalar() or 0
+            
+            executed = db.session.query(db.func.sum(MaintenanceLog.executed_value)).filter(
+                MaintenanceLog.engineering_id == eng.id,
+                MaintenanceLog.component_type_id == comp.id,
+                db.extract('year', MaintenanceLog.date) == year,
+                db.extract('month', MaintenanceLog.date) == month
+            ).scalar() or 0
+            
+            if target > 0:
+                comp_percent = (executed / target * 100)
+                component_percents.append(comp_percent)
+                total_target_all += target
+                total_executed_all += executed
         
-        percent = (total_executed / total_target * 100) if total_target > 0 else 0
+        # النسبة الصحيحة = متوسط نسب المكونات
+        if component_percents:
+            overall_percent = sum(component_percents) / len(component_percents)
+        else:
+            overall_percent = 0
         
         data.append({
             'engineering_id': eng.id,
             'engineering': eng.name,
-            'target': round(total_target, 2),
-            'executed': round(total_executed, 2),
-            'percent': round(percent, 2)
+            'target': round(total_target_all, 2),
+            'executed': round(total_executed_all, 2),
+            'percent': round(overall_percent, 2)
         })
     
     return jsonify(data)
-
 # ================== API تفاصيل المكونات ==================
 @main_bp.route('/api/dashboard_details/<int:year>/<int:month>')
 @login_required
@@ -535,60 +552,101 @@ def import_excel():
                 except:
                     pass
         
-        targets_imported = 0
+                targets_imported = 0
+        executed_imported = 0
         
         for row_idx in range(8, len(df)):
             val_col1 = df.iloc[row_idx, 1] if df.shape[1] > 1 else None
             
-            if pd.notna(val_col1) and str(val_col1).strip() == 'مستهدف':
+            if pd.notna(val_col1):
+                row_type = str(val_col1).strip()
                 comp_name = str(df.iloc[row_idx, 0]).strip() if pd.notna(df.iloc[row_idx, 0]) else ''
                 
-                if not comp_name or comp_name == 'nan':
-                    continue
-                
-                comp = ComponentType.query.filter_by(name=comp_name).first()
-                if not comp:
-                    comp = ComponentType(name=comp_name, unit='عدد')
-                    db.session.add(comp)
-                    db.session.flush()
-                
-                for col, eng_name in engineering_map.items():
-                    eng = eng_objects.get(eng_name)
-                    if not eng:
+                if row_type == 'مستهدف':
+                    if not comp_name or comp_name == 'nan':
                         continue
                     
-                    if col in month_map:
-                        year, month = month_map[col]
-                        val = df.iloc[row_idx, col]
+                    comp = ComponentType.query.filter_by(name=comp_name).first()
+                    if not comp:
+                        comp = ComponentType(name=comp_name, unit='عدد')
+                        db.session.add(comp)
+                        db.session.flush()
+                    
+                    for col, eng_name in engineering_map.items():
+                        eng = eng_objects.get(eng_name)
+                        if not eng:
+                            continue
                         
-                        if pd.notna(val):
-                            try:
-                                target_value = float(val)
-                                
-                                existing = MonthlyTarget.query.filter_by(
-                                    engineering_id=eng.id,
-                                    component_type_id=comp.id,
-                                    year=year,
-                                    month=month
-                                ).first()
-                                
-                                if existing:
-                                    existing.target_value = target_value
-                                else:
-                                    new_target = MonthlyTarget(
+                        if col in month_map:
+                            year, month = month_map[col]
+                            val = df.iloc[row_idx, col]
+                            
+                            if pd.notna(val):
+                                try:
+                                    target_value = float(val)
+                                    
+                                    existing = MonthlyTarget.query.filter_by(
                                         engineering_id=eng.id,
                                         component_type_id=comp.id,
                                         year=year,
-                                        month=month,
-                                        target_value=target_value
-                                    )
-                                    db.session.add(new_target)
-                                targets_imported += 1
-                            except:
-                                pass
+                                        month=month
+                                    ).first()
+                                    
+                                    if existing:
+                                        existing.target_value = target_value
+                                    else:
+                                        new_target = MonthlyTarget(
+                                            engineering_id=eng.id,
+                                            component_type_id=comp.id,
+                                            year=year,
+                                            month=month,
+                                            target_value=target_value
+                                        )
+                                        db.session.add(new_target)
+                                    targets_imported += 1
+                                except:
+                                    pass
+                
+                elif row_type == 'منفذ':
+                    # المكون في الصف السابق لأن العمود 0 فارغ في صف منفذ
+                    prev_comp_name = str(df.iloc[row_idx - 1, 0]).strip() if pd.notna(df.iloc[row_idx - 1, 0]) else ''
+                    
+                    if not prev_comp_name or prev_comp_name == 'nan':
+                        continue
+                    
+                    comp = ComponentType.query.filter_by(name=prev_comp_name).first()
+                    if not comp:
+                        continue
+                    
+                    for col, eng_name in engineering_map.items():
+                        eng = eng_objects.get(eng_name)
+                        if not eng:
+                            continue
+                        
+                        if col in month_map:
+                            year, month = month_map[col]
+                            val = df.iloc[row_idx, col]
+                            
+                            if pd.notna(val):
+                                try:
+                                    executed_value = float(val)
+                                    
+                                    if executed_value > 0:
+                                        log = MaintenanceLog(
+                                            engineering_id=eng.id,
+                                            component_type_id=comp.id,
+                                            date=date(year, month, 1),
+                                            executed_value=executed_value,
+                                            notes='مستورد من ملف Excel',
+                                            personnel_ids=''
+                                        )
+                                        db.session.add(log)
+                                        executed_imported += 1
+                                except:
+                                    pass
         
         db.session.commit()
-        flash(f'✅ تم استيراد {targets_imported} مستهدف بنجاح!', 'success')
+        flash(f'✅ تم استيراد {targets_imported} مستهدف و {executed_imported} منفذ بنجاح!', 'success')
         
     except Exception as e:
         db.session.rollback()

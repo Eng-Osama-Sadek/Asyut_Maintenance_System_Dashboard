@@ -10,12 +10,16 @@ async function loadDashboard() {
     const executed = data.map(item => item.executed);
     const targets = data.map(item => item.target);
 
-    const totalTarget = targets.reduce((a,b) => a + b, 0);
+        const totalTarget = targets.reduce((a,b) => a + b, 0);
     const totalExecuted = executed.reduce((a,b) => a + b, 0);
+    
+    // النسبة الإجمالية = متوسط نسب الهندسات
+    const avgPercent = data.length > 0 ? 
+        (data.reduce((sum, item) => sum + item.percent, 0) / data.length).toFixed(2) : 0;
+    
     document.getElementById('totalTarget').textContent = totalTarget;
     document.getElementById('totalExecuted').textContent = totalExecuted;
-    document.getElementById('overallPercent').textContent = 
-        totalTarget > 0 ? ((totalExecuted/totalTarget)*100).toFixed(2) + '%' : '0%';
+    document.getElementById('overallPercent').textContent = avgPercent + '%';
 
     const ctx = document.getElementById('maintenanceChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
