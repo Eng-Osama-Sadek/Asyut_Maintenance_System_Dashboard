@@ -51,6 +51,109 @@ def dashboard():
         today=today
     )
 
+# ================== النسخ الاحتياطي ==================
+@main_bp.route('/backup_database')
+@login_required
+def backup_database():
+    """تحميل نسخة احتياطية من قاعدة البيانات"""
+    try:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'maintenance.db')
+        
+        if not os.path.exists(db_path):
+            flash('لا توجد قاعدة بيانات للنسخ الاحتياطي', 'error')
+            return redirect(url_for('main.dashboard'))
+        
+        backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backups')
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_name = f'backup_{timestamp}.db'
+        backup_path = os.path.join(backup_dir, backup_name)
+        
+        import shutil
+        shutil.copy2(db_path, backup_path)
+        
+        uploads_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
+        if os.path.exists(uploads_dir):
+            uploads_backup = os.path.join(backup_dir, f'uploads_{timestamp}')
+            shutil.copytree(uploads_dir, uploads_backup)
+        
+        flash(f'✅ تم إنشاء نسخة احتياطية بنجاح: {backup_name}', 'success')
+        
+        return send_file(
+            backup_path,
+            as_attachment=True,
+            download_name=backup_name
+        )
+    
+    except Exception as e:
+        flash(f'❌ خطأ في النسخ الاحتياطي: {str(e)}', 'error')
+        return redirect(url_for('main.dashboard'))
+
+# ================== تفريغ قاعدة البيانات ==================
+@main_bp.route('/clear_database', methods=['POST'])
+@login_required
+def clear_database():
+    """تفريغ قاعدة البيانات لبدء سنة مالية جديدة"""
+    try:
+        confirmation = request.form.get('confirmation', '')
+        if confirmation != 'نعم':
+            flash('يجب كتابة "نعم" للتأكيد', 'error')
+            return redirect(url_for('main.dashboard'))
+        
+        MaintenanceLog.query.delete()
+        MonthlyTarget.query.delete()
+        Media.query.delete()
+        
+        db.session.commit()
+        
+        flash('✅ تم تفريغ جميع البيانات بنجاح. يمكنك الآن استيراد بيانات جديدة.', 'success')
+    
+    except Exception as e:
+        db.session.rollback()
+        flash(f'❌ خطأ في التفريغ: {str(e)}', 'error')
+    
+    return redirect(url_for('main.dashboard'))
+
+# ================== استعادة قاعدة البيانات ==================
+@main_bp.route('/restore_database', methods=['POST'])
+@login_required
+def restore_database():
+    """استعادة نسخة احتياطية من قاعدة البيانات"""
+    if 'backup_file' not in request.files:
+        flash('لا يوجد ملف مرفوع', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    file = request.files['backup_file']
+    if file.filename == '':
+        flash('لم يتم اختيار ملف', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    if not file.filename.endswith('.db'):
+        flash('يجب أن يكون الملف بصيغة .db', 'error')
+        return redirect(url_for('main.dashboard'))
+    
+    try:
+        import shutil
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'maintenance.db')
+        
+        temp_backup = db_path + '.temp_backup'
+        if os.path.exists(db_path):
+            shutil.copy2(db_path, temp_backup)
+        
+        file.save(db_path)
+        
+        flash('✅ تم استعادة قاعدة البيانات بنجاح!', 'success')
+        
+    except Exception as e:
+        if 'temp_backup' in locals() and os.path.exists(temp_backup):
+            shutil.copy2(temp_backup, db_path)
+            os.remove(temp_backup)
+        flash(f'❌ خطأ في الاستعادة: {str(e)}', 'error')
+    
+    return redirect(url_for('main.dashboard'))
+
 # ================== API لوحة التحكم ==================
 @main_bp.route('/api/dashboard/<int:year>/<int:month>')
 @login_required
@@ -293,7 +396,6 @@ def assistant():
         data = request.get_json()
         user_message = data.get('message', '')
         
-        # جلب بيانات حقيقية من قاعدة البيانات
         today = date.today()
         year = today.year
         month = today.month
@@ -357,6 +459,7 @@ def assistant():
     
     except Exception as e:
         return jsonify({'response': f'حدث خطأ: {str(e)}'}), 500
+
 # ================== استيراد Excel ==================
 @main_bp.route('/import_excel', methods=['POST'])
 @login_required

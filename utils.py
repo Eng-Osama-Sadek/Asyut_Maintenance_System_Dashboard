@@ -26,22 +26,96 @@ def ar_text(text):
     """تحويل النص العربي للعرض الصحيح"""
     if not text:
         return ''
-    return get_display(arabic_reshaper.reshape(text))
+    text_str = str(text).strip()
+    if not text_str:
+        return ''
+    reshaped_text = arabic_reshaper.reshape(text_str)
+    return get_display(reshaped_text)
+
+def ar_cell_lines(text, width_cm=6.0, font_name='ArabicFont', font_size=9, style=None):
+    """
+    تقطيع النص العربي يدوياً لتحضيره للجدول مع حماية التشكيل العربي
+    """
+    if not text:
+        return ''
+    
+    text_str = str(text).strip()
+    if not text_str:
+        return ''
+        
+    max_width_pt = (width_cm - 0.3) * 28.3465
+    words = text_str.split()
+    lines = []
+    current_line = []
+    
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        try:
+            w = pdfmetrics.stringWidth(arabic_reshaper.reshape(test_line), font_name, font_size)
+        except Exception:
+            w = len(test_line) * font_size * 0.55
+            
+        if w <= max_width_pt or not current_line:
+            current_line.append(word)
+        else:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+            
+    if current_line:
+        lines.append(' '.join(current_line))
+        
+    elements = []
+    for line in lines:
+        reshaped_line = get_display(arabic_reshaper.reshape(line))
+        elements.append(Paragraph(reshaped_line, style))
+        
+    return elements
+
+def get_arabic_font():
+    """تسجيل الخط العربي وضمان تنزيل خط Amiri يدعم UTF-8 كاملاً لتجنب المربعات السوداء"""
+    font_name = 'ArabicFont'
+    
+    if font_name in pdfmetrics.getRegisteredFontNames():
+        return font_name
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # قائمة بمسارات الخطوط للتأكد من المحاولة
+    possible_paths = [
+        os.path.join(base_dir, 'Amiri-Regular.ttf'),
+        os.path.join(base_dir, 'NotoNaskhArabic.ttf'),
+        "C:\\Windows\\Fonts\\arial.ttf"  # للأنظمة التي تعمل على ويندوز
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                pdfmetrics.registerFont(TTFont(font_name, path))
+                return font_name
+            except Exception:
+                continue
+
+    # تنزيل خط Amiri-Regular تلقائياً إن لم يوجد أي خط محلي
+    amiri_path = os.path.join(base_dir, 'Amiri-Regular.ttf')
+    try:
+        url = "https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Regular.ttf"
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            with open(amiri_path, 'wb') as f:
+                f.write(r.content)
+            pdfmetrics.registerFont(TTFont(font_name, amiri_path))
+            return font_name
+    except Exception:
+        pass
+
+    return 'Helvetica'
+
 
 def generate_pdf(context=None):
     """توليد تقرير PDF"""
     buffer = BytesIO()
     
-    font_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'NotoNaskhArabic.ttf')
-    
-    if os.path.exists(font_path):
-        try:
-            pdfmetrics.registerFont(TTFont('ArabicFont', font_path))
-            arabic_font = 'ArabicFont'
-        except:
-            arabic_font = 'Helvetica'
-    else:
-        arabic_font = 'Helvetica'
+    arabic_font = get_arabic_font()
     
     doc = SimpleDocTemplate(
         buffer,
@@ -82,7 +156,9 @@ def generate_pdf(context=None):
         fontName=arabic_font,
         textColor=colors.black,
         alignment=TA_CENTER,
-        leading=12
+        leading=11,
+        spaceAfter=0,
+        spaceBefore=0
     )
     
     if context:
@@ -111,7 +187,7 @@ def generate_pdf(context=None):
                     f"{item['percent']}%",
                     str(item['executed']),
                     str(item['target']),
-                    Paragraph(ar_text(item['component']), body_style)
+                    ar_cell_lines(item['component'], width_cm=8.0, font_name=arabic_font, font_size=10, style=body_style)
                 ])
             
             summary_table = Table(summary_data, colWidths=[2.5*cm, 2.5*cm, 2.5*cm, 8*cm])
@@ -140,14 +216,14 @@ def generate_pdf(context=None):
             
             for log in context['logs']:
                 logs_data.append([
-                    Paragraph(ar_text(log.get('personnel', '')), body_style),
-                    Paragraph(ar_text(log.get('notes', '')), body_style),
+                    ar_cell_lines(log.get('personnel', ''), width_cm=2.5, font_name=arabic_font, font_size=9, style=body_style),
+                    ar_cell_lines(log.get('notes', ''), width_cm=6.5, font_name=arabic_font, font_size=9, style=body_style),
                     str(log.get('value', '')),
-                    Paragraph(ar_text(log.get('component', '')), body_style),
+                    ar_cell_lines(log.get('component', ''), width_cm=3.0, font_name=arabic_font, font_size=9, style=body_style),
                     str(log.get('date', ''))
                 ])
             
-            logs_table = Table(logs_data, colWidths=[2.5*cm, 6*cm, 1.5*cm, 3.5*cm, 2.5*cm])
+            logs_table = Table(logs_data, colWidths=[2.5*cm, 6.5*cm, 1.5*cm, 3*cm, 2.5*cm])
             logs_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0d1b2a')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#ffc107')),
@@ -194,7 +270,7 @@ def get_openai_response(message, context_data=None):
         return "عذراً، لم يتم إعداد مفتاح Gemini API"
     
     try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": api_key

@@ -114,7 +114,17 @@
         </div>
     </div>
 </div>
-
+<!-- أزرار النسخ الاحتياطي والتفريغ -->
+<div class="mb-4">
+    <a href="{{ url_for('main.backup_database') }}" class="btn btn-success me-2">💾 نسخ احتياطي</a>
+    <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#clearModal">🗑️ تفريغ البيانات</button>
+</div>
+<!-- أزرار النسخ الاحتياطي والتفريغ -->
+<div class="mb-4">
+    <a href="{{ url_for('main.backup_database') }}" class="btn btn-success me-2">💾 نسخ احتياطي</a>
+    <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#restoreModal">📂 استعادة نسخة</button>
+    <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#clearModal">🗑️ تفريغ البيانات</button>
+</div>
 <!-- أزرار إضافية -->
 <div class="mb-4">
     <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#addLogModal">➕ إضافة سجل صيانة</button>
@@ -279,6 +289,47 @@
         <input type="text" id="aiInput" class="form-control" placeholder="اكتب سؤالك هنا...">
         <button class="btn btn-warning mt-2 w-100" onclick="sendAIMessage()">إرسال</button>
     </div>
+</div>
+<!-- Modal للتفريغ -->
+<div class="modal fade" id="clearModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-warning">
+      <div class="modal-header border-warning">
+        <h5 class="modal-title">⚠️ تأكيد تفريغ البيانات</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-danger">تحذير: سيتم حذف جميع بيانات الصيانة والمستهدفات نهائياً!</p>
+        <form method="POST" action="{{ url_for('main.clear_database') }}">
+          <div class="mb-3">
+            <label class="form-label">اكتب "نعم" للتأكيد</label>
+            <input type="text" name="confirmation" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-danger">تفريغ البيانات</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Modal للاستعادة -->
+<div class="modal fade" id="restoreModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-warning">
+      <div class="modal-header border-warning">
+        <h5 class="modal-title">📂 استعادة نسخة احتياطية</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>اختر ملف قاعدة البيانات (.db) الذي تريد استعادته</p>
+        <form method="POST" action="{{ url_for('main.restore_database') }}" enctype="multipart/form-data">
+          <div class="mb-3">
+            <input type="file" name="backup_file" class="form-control" accept=".db" required>
+          </div>
+          <button type="submit" class="btn btn-primary">استعادة</button>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
