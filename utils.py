@@ -270,7 +270,7 @@ def get_openai_response(message, context_data=None):
         return "عذراً، لم يتم إعداد مفتاح Gemini API"
     
     try:
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent"
         headers = {
             "Content-Type": "application/json",
             "x-goog-api-key": api_key
