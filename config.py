@@ -8,6 +8,11 @@ class Config:
     database_url = os.environ.get('DATABASE_URL')
     if database_url and database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    if os.environ.get('VERCEL') and not database_url:
+        raise RuntimeError(
+            'DATABASE_URL must be configured on Vercel. '
+            'A persistent PostgreSQL database is required for serverless deployments.'
+        )
     SQLALCHEMY_DATABASE_URI = database_url or 'sqlite:///maintenance.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = (
