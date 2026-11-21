@@ -2,8 +2,11 @@ Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
-WeasyPrint==60.2
-openai==1.12.0
 python-dotenv==1.0.0
-pandas==2.2.0
-openpyxl==3.1.2
+pandas==2.3.3
+openpyxl==3.1.5
+psycopg2-binary==2.9.9
+reportlab==4.2.5
+arabic-reshaper==3.0.0
+python-bidi==0.4.2
+requests==2.32.3

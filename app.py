@@ -1,5 +1,6 @@
 from flask import Flask
 from flask_login import LoginManager
+import os
 from config import Config
 from models import db, User
 
@@ -8,6 +9,7 @@ login_manager = LoginManager()
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
     db.init_app(app)
     login_manager.init_app(app)
